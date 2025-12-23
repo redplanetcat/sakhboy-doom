@@ -178,7 +178,7 @@ const struct scanvideo_pio_program video_doom = {
 #endif
 };
 
-#define scanline_clock_freq 200000 * 400
+#define scanline_clock_freq 250000 * 400
 
 const scanvideo_timing_t vga_timing_1280x1000_60_default = // same as 1280x1024_60 standard just with some 12 blank lines at the top and bottom
         {
