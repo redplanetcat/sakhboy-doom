@@ -40,6 +40,9 @@
 bi_decl(bi_program_feature("USB keyboard support"));
 #endif
 
+// sakhboy
+#include "hardware/gpio.h"
+
 static const int scancode_translate_table[] = SCANCODE_TO_KEYS_ARRAY;
 
 // Lookup table for mapping ASCII characters to their equivalent when
@@ -127,6 +130,13 @@ enum {
     SDL_SCANCODE_RSHIFT = 229,
     SDL_SCANCODE_RALT = 230, /**< alt gr, option */
     SDL_SCANCODE_RGUI = 231, /**< windows, command (apple), meta */
+// sakhboy
+    SDL_SCANCODE_RIGHT = 79, SDL_SCANCODE_LEFT = 80, SDL_SCANCODE_DOWN = 81, SDL_SCANCODE_UP = 82,
+    SDL_SCANCODE_RETURN = 40,
+    SDL_SCANCODE_GRAVE = 35,
+    SDL_SCANCODE_TAB = 43,
+    SDL_SCANCODE_KP_PLUS = 87,
+    SDL_SCANCODE_ESCAPE = 41,
 };
 
 // Translates the SDL key to a value of the type found in doomkeys.h
@@ -511,6 +521,137 @@ static void pico_quit(void) {
 }
 #endif
 
+// sakhboy
+#define PIN_UP 8
+#define PIN_LEFT 9
+#define PIN_DOWN 10
+#define PIN_RIGHT 11
+#define PIN_SELECT 15
+#define PIN_START 14
+#define PIN_A 13
+#define PIN_B 12
+
+void sakhboy_keys_init(void) {
+    printf("initializing input");
+    uint8_t pins[] = {PIN_UP, PIN_LEFT, PIN_DOWN, PIN_RIGHT, PIN_SELECT, PIN_START, PIN_A, PIN_B};
+    for (int ii = 0; ii < sizeof(pins); ii++) {
+        gpio_deinit(pins[ii]);
+        gpio_init(pins[ii]);
+        gpio_pull_up(pins[ii]);
+        gpio_set_dir(pins[ii], GPIO_IN);
+    }
+}
+
+#include "pico/bootrom.h"
+
+void sakhboy_keys_scan() {
+    uint8_t pins[] = {PIN_UP, PIN_LEFT, PIN_DOWN, PIN_RIGHT, PIN_SELECT, PIN_START, PIN_A, PIN_B};
+    static uint8_t button_state[] = {1, 1, 1, 1, 1, 1, 1, 1};
+    static uint8_t change_weapon_action;
+    uint8_t pressed;
+    for (int ii = 0; ii < sizeof(pins); ii++) {
+        pressed = (uint8_t)gpio_get(pins[ii]);
+        if (pressed != button_state[ii]) {
+            button_state[ii] = pressed;
+            switch (ii) {
+                case 0: {
+                    // PIN_UP
+                    if (pressed == 0) {
+                        pico_key_down(SDL_SCANCODE_UP, 0, 0);
+                    } else {
+                        pico_key_up(SDL_SCANCODE_UP, 0, 0);
+                    }
+                    break;
+                }
+                case 1: {
+                    // PIN_LEFT
+                    if (pressed == 0) {
+                        pico_key_down(SDL_SCANCODE_LEFT, 0, 0);
+                    } else {
+                        pico_key_up(SDL_SCANCODE_LEFT, 0, 0);
+                    }
+                    break;
+                }
+                case 2: {
+                    // PIN_DOWN
+                    if (pressed == 0) {
+                        pico_key_down(SDL_SCANCODE_DOWN, 0, 0);
+                    } else {
+                        pico_key_up(SDL_SCANCODE_DOWN, 0, 0);
+                    }
+                    break;
+                }
+                case 3: {
+                    // PIN_RIGHT
+                    if (pressed == 0) {
+                        pico_key_down(SDL_SCANCODE_RIGHT, 0, 0);
+                    } else {
+                        pico_key_up(SDL_SCANCODE_RIGHT, 0, 0);
+                    }
+                    break;
+                }
+                case 4: {
+                    // PIN_SELECT
+                    if (pressed == 0) {
+                        pico_key_down(SDL_SCANCODE_KP_PLUS, 0, 0);
+                        pico_key_down(SDL_SCANCODE_ESCAPE ,0, 0);
+                    } else {
+                        pico_key_up(SDL_SCANCODE_KP_PLUS, 0, 0);
+                        pico_key_up(SDL_SCANCODE_ESCAPE, 0, 0);
+                    }
+                    break;
+                }
+                case 5: {
+                    // PIN_START
+                    if (pressed == 0) {
+                        if (gpio_get(PIN_SELECT) == 0) {
+                            reset_usb_boot(0, 0);
+                        }
+                        if (change_weapon_action > 0) {
+                            pico_key_down(SDL_SCANCODE_KP_PLUS, 0, 0);
+                            pico_key_down(SDL_SCANCODE_ESCAPE, 0, 0);
+                        } else {
+                            pico_key_down(SDL_SCANCODE_RETURN, 0, 0);
+                            pico_key_down(SDL_SCANCODE_TAB, 0, 0);
+                        }
+                    } else {
+                        pico_key_up(SDL_SCANCODE_RETURN, 0, 0);
+                        pico_key_up(SDL_SCANCODE_TAB, 0, 0);
+                        pico_key_up(SDL_SCANCODE_KP_PLUS, 0, 0);
+                        pico_key_up(SDL_SCANCODE_ESCAPE, 0, 0);
+                    }
+                    break;
+                }
+                case 6: {
+                    // PIN_A
+                    if (pressed == 0) {
+                        pico_key_down(SDL_SCANCODE_SPACE, 0, 0);
+                        pico_key_down(SDL_SCANCODE_LSHIFT, 0, 0);
+                        change_weapon_action = 1;
+                    } else {
+                        pico_key_up(SDL_SCANCODE_SPACE, 0, 0);
+                        pico_key_up(SDL_SCANCODE_LSHIFT, 0, 0);
+                        change_weapon_action = 0;
+                    }
+                    break;
+                }
+                case 7: {
+                    // PIN_B
+                    if (pressed == 0) {
+                        pico_key_down(SDL_SCANCODE_RCTRL, 0, 0);
+                    } else {
+                        pico_key_up(SDL_SCANCODE_RCTRL, 0, 0);
+                    }
+                    break;
+                }
+                default: {
+                    break;
+                }
+            }
+        }
+    }
+}
+
 void I_InputInit(void) {
 #if PICO_NO_HARDWARE
     platform_key_down = pico_key_down;
@@ -520,12 +661,16 @@ void I_InputInit(void) {
     tusb_init();
     irq_set_priority(USBCTRL_IRQ, 0xc0);
 #endif
+    // sakhboy
+    sakhboy_keys_init();
 }
 
 void I_GetEvent() {
 #if USB_SUPPORT
     tuh_task();
 #endif
+    // sakhboy
+    sakhboy_keys_scan();
     return I_GetEventTimeout(50);
 }
 

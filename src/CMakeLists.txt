@@ -452,7 +452,7 @@ target_compile_definitions(small_doom_common INTERFACE
         PICO_NO_TIMING_DEMO=1
         NO_USE_EXIT=1 # not sure whether we have an exit... if so what does it need to do?
 
-        PICO_DEBUG_PIN_BASE=18
+        PICO_DEBUG_PIN_BASE=30
         PICO_DEBUG_PIN_COUNT=2
 )
 
@@ -513,8 +513,9 @@ function(add_doom_tiny SUFFIX RENDER_LIB)
         USE_PICO_NET=1
         # for vgaboard
         PICO_DEFAULT_I2C=1
-        PICO_DEFAULT_I2C_SDA_PIN=18
-        PICO_DEFAULT_I2C_SCL_PIN=19
+        #sakhboy
+        PICO_DEFAULT_I2C_SDA_PIN=30
+        PICO_DEFAULT_I2C_SCL_PIN=30
 
         #NO_USE_LOAD=1
         #NO_USE_SAVE=1
@@ -585,20 +586,22 @@ function(add_doom_tiny SUFFIX RENDER_LIB)
     set(STAMP_HACK 0)
     if (PICO_HACK)
         target_compile_definitions(doom_tiny${SUFFIX} PRIVATE
-                PICO_AUDIO_I2S_DATA_PIN=20
-                PICO_AUDIO_I2S_CLOCK_PIN_BASE=21
+                PICO_AUDIO_I2S_DATA_PIN=30
+                PICO_AUDIO_I2S_CLOCK_PIN_BASE=30
                 NO_USE_UART=1
                 )
         pico_enable_stdio_uart(doom_tiny${SUFFIX} 0)
     elseif(STAMP_HACK)
         target_compile_definitions(doom_tiny${SUFFIX} PRIVATE
-                PICO_AUDIO_I2S_DATA_PIN=22
-                PICO_AUDIO_I2S_CLOCK_PIN_BASE=23
+                PICO_AUDIO_I2S_DATA_PIN=30
+                PICO_AUDIO_I2S_CLOCK_PIN_BASE=30
                 NO_USE_UART=1
                 INCREASE_I2S_DRIVE_STRENGTH=1
         )
         pico_enable_stdio_uart(doom_tiny${SUFFIX} 0)
     endif()
+    # sakhboy
+    pico_enable_stdio_uart(doom_tiny${SUFFIX} 0)
 endfunction()
 
 add_subdirectory(whd_gen)
@@ -639,26 +642,26 @@ if (PICO_SDK)
             TINY_WAD_ADDR=0x10040000
     )
     target_link_libraries(doom_tiny PRIVATE tiny_settings)
-    add_doom_tiny(_nost render_newhope)
+    # add_doom_tiny(_nost render_newhope)
 
-    target_compile_definitions(doom_tiny_nost PRIVATE
-            # NO_USE_FINALE_CAST=1 # note this is only used by doom II but doesnt take that much more space
-            TINY_WAD_ADDR=0x10048000
-            )
+    # target_compile_definitions(doom_tiny_nost PRIVATE
+    #         # NO_USE_FINALE_CAST=1 # note this is only used by doom II but doesnt take that much more space
+    #         TINY_WAD_ADDR=0x10048000
+    #         )
     if (PICO_ON_DEVICE)
-        suppress_tinyusb_warnings()
-        add_doom_tiny(_usb render_newhope)
-        target_link_libraries(doom_tiny_usb PRIVATE tiny_settings pico_cd)
-        target_compile_definitions(doom_tiny_usb PRIVATE
-                USB_SUPPORT=1
-                TINY_WAD_ADDR=0x10042000 # ugh tinyusb is >8K currently!!
-        )
-        add_doom_tiny(_nost_usb render_newhope)
-        target_link_libraries(doom_tiny_nost_usb PRIVATE pico_cd)
-        target_compile_definitions(doom_tiny_nost_usb PRIVATE
-                USB_SUPPORT=1
-                TINY_WAD_ADDR=0x10048000
-                )
+        #suppress_tinyusb_warnings()
+        # add_doom_tiny(_usb render_newhope)
+        # target_link_libraries(doom_tiny_usb PRIVATE tiny_settings pico_cd)
+        # target_compile_definitions(doom_tiny_usb PRIVATE
+        #         USB_SUPPORT=1
+        #         TINY_WAD_ADDR=0x10042000 # ugh tinyusb is >8K currently!!
+        # )
+        # add_doom_tiny(_nost_usb render_newhope)
+        # target_link_libraries(doom_tiny_nost_usb PRIVATE pico_cd)
+        # target_compile_definitions(doom_tiny_nost_usb PRIVATE
+        #         USB_SUPPORT=1
+        #         TINY_WAD_ADDR=0x10048000
+        #         )
     endif()
 endif()
 

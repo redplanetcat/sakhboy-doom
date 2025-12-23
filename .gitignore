@@ -57,3 +57,9 @@ GTAGS
 *.wad
 *.whd
 /cmake-*/
+
+# VSCode files
+.vscode/
+
+build/
+3rdparty/

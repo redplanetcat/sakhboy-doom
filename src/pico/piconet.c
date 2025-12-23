@@ -10,7 +10,7 @@
 
 boolean net_client_connected;
 
-#if PICO_ON_DEVICE
+#if !PICO_ON_DEVICE
 #include "hardware/irq.h"
 #include "hardware/dma.h"
 #include "hardware/timer.h"

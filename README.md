@@ -1,3 +1,21 @@
+# SakhBoy Doom
+
+rp2040-doom fork with minor changes to work with SakhBoy opensource console.
+
+## Build instructions:
+First, build with cmake:
+```bash
+mkdir build
+cd build
+cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DPICO_BOARD=vgaboard -DPICO_SDK_PATH=[path_to_pico_sdk] -DPICO_EXTRAS_PATH=[path_to_pico_extras] -DPICO_TOOLCHAIN_PATH:STRING=[path_to_toolchain_dir] ..
+cmake --build .
+```
+Copy doom1.whx to flash at 0x10040000 (from repository root):
+```bash
+picotool load -v -t bin doom1.whx -o 0x10040000.
+```
+
+# original readme
 # RP2040 (+RP2350) Doom
 
 This is a port of Doom for RP2040 / RP2350 devices, derived from [Chocolate Doom](https://github.com/chocolate-doom/chocolate-doom).

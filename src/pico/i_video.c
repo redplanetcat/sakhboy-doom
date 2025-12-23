@@ -57,6 +57,12 @@
 #include "hardware/structs/xip_ctrl.h"
 #endif
 
+// sakhboy
+#include "hardware/spi.h"
+#include "hardware/clocks.h"
+#include "./sakhboy/display.h"
+// static int display_dma_channel;
+
 #define YELLOW_SUBMARINE 0
 #define SUPPORT_TEXT 1
 #if SUPPORT_TEXT
@@ -172,9 +178,12 @@ const struct scanvideo_pio_program video_doom = {
 #endif
 };
 
+#define scanline_clock_freq 200000 * 400
+
 const scanvideo_timing_t vga_timing_1280x1000_60_default = // same as 1280x1024_60 standard just with some 12 blank lines at the top and bottom
         {
-                .clock_freq = 108000000,
+                // .clock_freq = 108000000,
+                .clock_freq = scanline_clock_freq,
 
                 .h_active = 1280,
                 .v_active = 1024 - 24,
@@ -192,7 +201,8 @@ const scanvideo_timing_t vga_timing_1280x1000_60_default = // same as 1280x1024_
 
 const scanvideo_timing_t vga_timing_640x1000_60_default = // same as 1280x1024_60 standard just with some 12 blank lines at the top and bottom
         {
-                .clock_freq = 108000000 / 2,
+                // .clock_freq = 108000000 / 2,
+                .clock_freq = scanline_clock_freq / 2,
 
 #if PICO_ON_DEVICE
                 .h_active = 1280 / 2,
@@ -212,12 +222,39 @@ const scanvideo_timing_t vga_timing_640x1000_60_default = // same as 1280x1024_6
                 .v_sync_polarity = 0,
         };
 
+// sakhboy
+const scanvideo_timing_t vga_timing_320x240_60_lcd =
+        {
+                // .clock_freq = 108000000 / 8,
+                .clock_freq = scanline_clock_freq / 8,
+                .h_active = 1280 / 2 ,
+                .v_active = 1000 / 1 ,
+
+                .h_front_porch = 48 / 2 ,
+                .h_pulse = 112 / 2 ,
+                .h_total = 1688 / 2 ,
+                .h_sync_polarity = 0,
+
+                .v_front_porch = 1 + 24 - 12,
+                .v_pulse = 3,
+                .v_total = 1066 / 1 ,
+                .v_sync_polarity = 0,
+
+                // .enable_clock = 0,
+                // .clock_polarity = 0,
+
+                // .enable_den = 0
+        };
+
 const scanvideo_mode_t vga_mode_320x200 =
         {
-                .default_timing = &vga_timing_640x1000_60_default,
+                // sakhboy
+                .default_timing = &vga_timing_320x240_60_lcd,
+                // .default_timing = &vga_timing_640x1000_60_default,
                 .pio_program = &video_doom,
 #if PICO_ON_DEVICE
-                .width = 320,
+                // sakhboy
+                .width = 160,
 #else
                 .width = 640,
 #endif
@@ -751,12 +788,12 @@ static inline uint draw_vpatch(uint16_t *dest, patch_t *patch, vpatchlist_t *vp,
 #if PICO_ON_DEVICE
                 if (patch == stbar) {
                     static const uint8_t *cached_data;
-#if PICO_RP2040
+// #if PICO_RP2040
                     static uint32_t __scratch_x("data_cache") data_cache[41];
-#else
+// #else
                     // short of scratch space on RP2350 for some reason, so lets put this in main RAM
-                    static uint32_t data_cache[41];
-#endif
+                    // static uint32_t data_cache[41];
+// #endif
                     int i = 0;
                     uint32_t *d = (uint32_t *) dest;
 #define DMA_CHANNEL 11
@@ -980,7 +1017,10 @@ void __no_inline_not_in_flash_func(new_frame_stuff)() {
     }
 }
 
-void __scratch_x("scanlines") fill_scanlines() {
+// sakhboy
+void sakhboy_frame_timing_register_init();
+// void __scratch_x("scanlines") fill_scanlines() {
+void __not_in_flash_func(fill_scanlines)() {
 #if SUPPORT_TEXT
     struct scanvideo_scanline_buffer *buffer = scanvideo_begin_scanline_generation_linked(display_video_type == VIDEO_TYPE_TEXT ? 2 : 1, false);
 #else
@@ -998,6 +1038,10 @@ void __scratch_x("scanlines") fill_scanlines() {
         if ((int8_t) frame != last_frame_number) {
             last_frame_number = frame;
             new_frame_stuff();
+            // gpio_xor_mask(1<<LED_PIN);
+            if (frame % 60 == 0) {
+                sakhboy_frame_timing_register_init();
+            }
         }
 
         DEBUG_PINS_SET(scanline_copy, 1);
@@ -1056,6 +1100,15 @@ void __scratch_x("scanlines") fill_scanlines() {
 #endif
         }
         scanvideo_end_scanline_generation(buffer);
+
+        for(int i=0,j=2; j<SCREENWIDTH*2; i+=2,j+=4){
+           memcpy((uint8_t *)&(buffer->data[2])+i+0 , (uint8_t *)&(buffer->data[2])+j+0, sizeof(uint8_t));
+           memcpy((uint8_t *)&(buffer->data[2])+i+1 , (uint8_t *)&(buffer->data[2])+j+1, sizeof(uint8_t));
+        }
+        if(scanline % 2 == 0){
+          spi_write_blocking(DISPLAY_SPI_PORT, (uint8_t *)&(buffer->data[2])+1, 1*SCREENWIDTH);
+        }
+
 #if SUPPORT_TEXT
         buffer = scanvideo_begin_scanline_generation_linked(display_video_type == VIDEO_TYPE_TEXT ? 2 : 1, false);
 #else
@@ -1081,7 +1134,7 @@ static void __not_in_flash_func(free_buffer_callback)() {
 #if !PICO_RP2350
     *((io_rw_32 *) (PPB_BASE + M0PLUS_NVIC_ISPR_OFFSET)) = 1u << LOW_PRIO_IRQ;
 #else
-    nvic_hw->ispr[LOW_PRIO_IRQ / 32] = 1 << (LOW_PRIO_IRQ % 32);
+    // nvic_hw->ispr[LOW_PRIO_IRQ / 32] = 1 << (LOW_PRIO_IRQ % 32);
 #endif
 }
 #endif
@@ -1115,11 +1168,258 @@ static void core1() {
     }
 }
 
+//sakhboy
+static void display_write_command(const uint8_t command)
+{
+    /* Set DC low to denote incoming command. */
+    gpio_put(DISPLAY_PIN_DC, 0);
+
+    /* Set CS low to reserve the SPI bus. */
+    gpio_put(DISPLAY_PIN_CS, 0);
+
+    spi_write_blocking(DISPLAY_SPI_PORT, &command, 1);
+
+    /* Set CS high to ignore any traffic on SPI bus. */
+    gpio_put(DISPLAY_PIN_CS, 1);
+}
+
+static void display_write_data(const uint8_t *data, size_t length)
+{
+    size_t sent = 0;
+
+    if (0 == length) {
+        return;
+    };
+
+    /* Set DC high to denote incoming data. */
+    gpio_put(DISPLAY_PIN_DC, 1);
+
+    /* Set CS low to reserve the SPI bus. */
+    gpio_put(DISPLAY_PIN_CS, 0);
+
+    spi_write_blocking(DISPLAY_SPI_PORT, data, length);
+
+    /* Set CS high to ignore any traffic on SPI bus. */
+    gpio_put(DISPLAY_PIN_CS, 1);
+}
+ void display_set_address(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2) {
+    uint8_t command;
+    uint8_t data[4];
+    static uint16_t prev_x1, prev_x2, prev_y1, prev_y2;
+
+    x1 = x1 + DISPLAY_OFFSET_X;
+    y1 = y1 + DISPLAY_OFFSET_Y;
+    x2 = x2 + DISPLAY_OFFSET_X;
+    y2 = y2 + DISPLAY_OFFSET_Y;
+
+    /* Change column address only if it has changed. */
+    if ((prev_x1 != x1 || prev_x2 != x2)) {
+        display_write_command(DCS_SET_COLUMN_ADDRESS);
+        data[0] = x1 >> 8;
+        data[1] = x1 & 0xff;
+        data[2] = x2 >> 8;
+        data[3] = x2 & 0xff;
+        display_write_data(data, 4);
+
+        prev_x1 = x1;
+        prev_x2 = x2;
+    }
+
+    /* Change page address only if it has changed. */
+    if ((prev_y1 != y1 || prev_y2 != y2)) {
+        display_write_command(DCS_SET_PAGE_ADDRESS);
+        data[0] = y1 >> 8;
+        data[1] = y1 & 0xff;
+        data[2] = y2 >> 8;
+        data[3] = y2 & 0xff;
+        display_write_data(data, 4);
+
+        prev_y1 = y1;
+        prev_y2 = y2;
+    }
+    // 
+    display_write_command(DCS_WRITE_MEMORY_START);
+}
+
+static void display_spi_master_init()
+{
+    // https://github.com/Bodmer/TFT_eSPI/discussions/2432
+// // Get the processor sys_clk frequency in Hz
+//  uint32_t freq = clock_get_hz(clk_sys);
+
+//  // clk_peri does not have a divider, so input and output frequencies will be the same
+//  clock_configure(clk_peri,
+//                     0,
+//                     CLOCKS_CLK_PERI_CTRL_AUXSRC_VALUE_CLK_SYS,
+//                     freq,
+//                     freq);
+
+
+    // gpio_set_function(DISPLAY_PIN_DC, GPIO_FUNC_SIO);
+    // gpio_set_dir(DISPLAY_PIN_DC, GPIO_OUT);
+
+    // gpio_set_function(DISPLAY_PIN_CS, GPIO_FUNC_SIO);
+    // gpio_set_dir(DISPLAY_PIN_CS, GPIO_OUT);
+
+    // gpio_set_function(DISPLAY_PIN_CLK,  GPIO_FUNC_SPI);
+    // gpio_set_function(DISPLAY_PIN_MOSI, GPIO_FUNC_SPI);
+
+    // if (DISPLAY_PIN_MISO > 0) {
+    //     gpio_set_function(DISPLAY_PIN_MISO, GPIO_FUNC_SPI);
+    // }
+
+    // /* Set CS high to ignore any traffic on SPI bus. */
+    // gpio_put(DISPLAY_PIN_CS, 1);
+
+    // spi_init(DISPLAY_SPI_PORT, DISPLAY_SPI_CLOCK_SPEED_HZ);
+    spi_init(spi_default, 62500 * 1000);
+
+    gpio_set_function(DISPLAY_PIN_MOSI, GPIO_FUNC_SPI);
+    gpio_set_function(DISPLAY_PIN_CLK, GPIO_FUNC_SPI);
+
+    gpio_init(DISPLAY_PIN_CS);
+    gpio_init(DISPLAY_PIN_DC);
+    gpio_init(DISPLAY_PIN_RST);
+
+
+    gpio_set_dir(DISPLAY_PIN_CS, GPIO_OUT);
+    gpio_set_dir(DISPLAY_PIN_DC, GPIO_OUT);
+    gpio_set_dir(DISPLAY_PIN_RST, GPIO_OUT);
+
+    gpio_put(DISPLAY_PIN_CS, 1);
+    gpio_put(DISPLAY_PIN_DC, 1);
+    // uint32_t baud = spi_set_baudrate(DISPLAY_SPI_PORT, DISPLAY_SPI_CLOCK_SPEED_HZ);
+    // uint32_t peri = clock_get_hz(clk_peri);
+    // uint32_t sys = clock_get_hz(clk_sys);
+
+// DMA init
+    // display_dma_channel = dma_claim_unused_channel(true);
+    // dma_channel_config channel_config = dma_channel_get_default_config(display_dma_channel);
+    // channel_config_set_transfer_data_size(&channel_config, DMA_SIZE_8);
+    // if (spi0 == DISPLAY_SPI_PORT) {
+    //     channel_config_set_dreq(&channel_config, DREQ_SPI0_TX);
+    // } else {
+    //     channel_config_set_dreq(&channel_config, DREQ_SPI1_TX);
+    // }
+    // dma_channel_set_config(display_dma_channel, &channel_config, false);
+    // dma_channel_set_write_addr(display_dma_channel, &spi_get_hw(DISPLAY_SPI_PORT)->dr, false);
+
+}
+
+void display_init()
+{
+
+    /* Init the spi driver. */
+    display_spi_master_init();
+    sleep_ms(100);
+
+    /* Reset the display. */
+    if (DISPLAY_PIN_RST > 0) {
+        gpio_set_function(DISPLAY_PIN_RST, GPIO_FUNC_SIO);
+        gpio_set_dir(DISPLAY_PIN_RST, GPIO_OUT);
+
+        gpio_put(DISPLAY_PIN_RST, 0);
+        sleep_ms(100);
+        gpio_put(DISPLAY_PIN_RST, 1);
+        sleep_ms(100);
+    }
+
+    /* Send minimal init commands. */
+    display_write_command(DCS_SOFT_RESET);
+    sleep_ms(200);
+
+    display_write_command(DCS_SET_ADDRESS_MODE);
+    uint8_t mode1 = DISPLAY_ADDRESS_MODE;
+    display_write_data(&mode1, 1);
+
+    display_write_command(DCS_SET_PIXEL_FORMAT);
+    uint8_t mode2 = DISPLAY_PIXEL_FORMAT;
+    display_write_data(&mode2, 1);
+
+    display_write_command(DCS_WRITE_DISPLAY_BRIGHTNESS);
+    uint8_t brightness = 0xaa;
+    display_write_data(&brightness, 1);
+
+    // display_write_command(DCS_GAMMA_SET);
+    // uint8_t gamma = 0x2;
+    // display_write_data(&gamma, 1);
+
+#ifdef DISPLAY_INVERT
+    display_write_command(DCS_ENTER_INVERT_MODE);
+
+#else
+    display_write_command(DCS_EXIT_INVERT_MODE);
+#endif
+
+    display_write_command(DCS_EXIT_SLEEP_MODE);
+    sleep_ms(200);
+
+    display_write_command(DCS_SET_DISPLAY_ON);
+    sleep_ms(200);
+// // ENDIAN
+//     display_write_command(0xf6);
+//     display_write_data(0x0001,2);
+//     display_write_data(0x0000,2);
+//     display_write_data(0x0020,2); // 0x0020 = LSB first
+
+    /* Enable backlight */
+    if (DISPLAY_PIN_BL > 0) {
+        gpio_set_function(DISPLAY_PIN_BL, GPIO_FUNC_SIO);
+        gpio_set_dir(DISPLAY_PIN_BL, GPIO_OUT);
+
+        gpio_put(DISPLAY_PIN_BL, 1);
+    }
+
+    /* Set the default viewport to full screen. */
+    display_set_address(0, 0, DISPLAY_WIDTH - 1, DISPLAY_HEIGHT - 1);
+
+
+}
+
+void display_clear()
+{
+    display_set_address(0,0,160-1,128-1);
+    BYTE pixel[2]={0x00,0x00};
+    for(int i=0;i<160*128;i+=1){
+        display_write_data(pixel,2);
+    }  
+}
+
+void sakhboy_frame_timing_register_init()
+{
+        uint8_t command;
+        uint8_t data[4];
+        int x=0;
+
+
+
+        // display_set_address(0, 0, (SCREENWIDTH)/2, (MAIN_VIEWHEIGHT)/2);
+        display_set_address(0, 10, (SCREENWIDTH)/2, 96+3+10);
+
+////
+        /*
+         *   keep chip select active, let the next data be written continuously
+         */
+        gpio_put(DISPLAY_PIN_DC, 1);
+        gpio_put(DISPLAY_PIN_CS, 0);
+
+}
+
 #if PICO_RP2350
 #include "hardware/structs/accessctrl.h"
 #endif
 void I_InitGraphics(void)
 {
+    // sakhboy
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+    gpio_put(LED_PIN, 1);
+
+    display_init();
+    display_clear();
+
+    sakhboy_frame_timing_register_init();
+
     stbar = resolve_vpatch_handle(VPATCH_STBAR);
     sem_init(&render_frame_ready, 0, 2);
     sem_init(&display_frame_freed, 1, 2);
